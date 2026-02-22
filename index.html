@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Margin + Dividend Reinvestment Compounder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  input[type="range"] { width: 100%; accent-color: #6366f1; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 8px 6px; text-align: right; color: #888; font-weight: 600; font-size: 11px; }
+  td { padding: 8px 6px; text-align: right; }
+  tr { border-bottom: 1px solid #222; }
+  thead tr { border-bottom: 1px solid #333; }
+  ::-webkit-scrollbar { height: 6px; }
+  ::-webkit-scrollbar-track { background: #1a1a2e; }
+  ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } = Recharts;
+
+const formatCurrency = (val) => `$${Math.round(val).toLocaleString()}`;
+const formatPct = (val) => `${val.toFixed(2)}%`;
+
+function App() {
+  const [equity, setEquity] = useState(400000);
+  const [years, setYears] = useState(5);
+  const [divYield, setDivYield] = useState(10.5);
+  const [marginRate, setMarginRate] = useState(4.5);
+  const [drawdownSurvival, setDrawdownSurvival] = useState(70);
+  const [maintReq, setMaintReq] = useState(25);
+  const [addCapital, setAddCapital] = useState(0);
+  const [capFreq, setCapFreq] = useState("monthly");
+
+  const annualContribution = capFreq === "monthly" ? addCapital * 12 : addCapital;
+
+  const retainPct = (100 - drawdownSurvival) / 100;
+  const maintPct = maintReq / 100;
+  const leverageRatio = (retainPct - maintPct * retainPct) / (1 - retainPct + maintPct * retainPct);
+
+  const r = divYield / 100;
+  const i = marginRate / 100;
+
+  const data = [];
+  let nmEquity = equity;
+  let wmEquity = equity;
+
+  for (let yr = 0; yr <= years; yr++) {
+    const wmDebt = wmEquity * leverageRatio;
+    const wmTotal = wmEquity + wmDebt;
+
+    data.push({
+      year: yr,
+      noMarginEquity: Math.round(nmEquity),
+      withMarginEquity: Math.round(wmEquity),
+      withMarginDebt: Math.round(wmDebt),
+      withMarginTotal: Math.round(wmTotal),
+      noMarginAnnualIncome: Math.round(nmEquity * r),
+      withMarginNetIncome: Math.round(wmTotal * r - wmDebt * i),
+      incomeDelta: Math.round(wmTotal * r - wmDebt * i - nmEquity * r),
+      equityDelta: Math.round(wmEquity - nmEquity),
+    });
+
+    if (yr < years) {
+      // Dividends reinvested + additional capital contributions
+      nmEquity = nmEquity * (1 + r) + annualContribution;
+      const wmGrowthRate = (1 + leverageRatio) * r - leverageRatio * i;
+      wmEquity = wmEquity * (1 + wmGrowthRate) + annualContribution;
+    }
+  }
+
+  const noMarginGrowth = r;
+  const withMarginGrowth = (1 + leverageRatio) * r - leverageRatio * i;
+
+  const finalData = data[years];
+
+  const customTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{ background: "#1a1a2e", border: "1px solid #444", borderRadius: 8, padding: "10px 14px" }}>
+        <p style={{ color: "#aaa", margin: "0 0 6px", fontSize: 13 }}>Year {label}</p>
+        {payload.map((p, idx) => (
+          <p key={idx} style={{ color: p.color, margin: "2px 0", fontSize: 13 }}>
+            {p.name}: {formatCurrency(p.value)}
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: "24px", maxWidth: 1000, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#fff" }}>
+        Margin + Dividend Reinvestment Compounder
+      </h1>
+      <p style={{ color: "#888", fontSize: 14, marginBottom: 24 }}>
+        Maintaining leverage ratio as equity grows from reinvested dividends
+      </p>
+
+      {/* Controls */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 28, background: "#1a1a2e", padding: 16, borderRadius: 10 }}>
+        {[
+          { label: "Starting Equity", val: equity, set: setEquity, min: 50000, max: 2000000, step: 10000, fmt: formatCurrency },
+          { label: "Years", val: years, set: setYears, min: 1, max: 20, step: 1, fmt: (v) => v },
+          { label: "Div Yield %", val: divYield, set: setDivYield, min: 4, max: 18, step: 0.25, fmt: (v) => v + "%" },
+          { label: "Margin Rate %", val: marginRate, set: setMarginRate, min: 2, max: 10, step: 0.25, fmt: (v) => v + "%" },
+          { label: "Drawdown Survival %", val: drawdownSurvival, set: setDrawdownSurvival, min: 30, max: 85, step: 5, fmt: (v) => v + "%" },
+          { label: "Maintenance Req %", val: maintReq, set: setMaintReq, min: 20, max: 50, step: 5, fmt: (v) => v + "%" },
+        ].map(({ label, val, set, min, max, step, fmt }) => (
+          <div key={label}>
+            <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", marginBottom: 4 }}>{fmt(val)}</div>
+            <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => set(Number(e.target.value))} />
+          </div>
+        ))}
+        <div>
+          <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+            Additional Capital ({capFreq === "monthly" ? "Monthly" : "Annual"})
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", marginBottom: 4 }}>{formatCurrency(addCapital)}</div>
+          <input type="range" min={0} max={capFreq === "monthly" ? 10000 : 120000} step={capFreq === "monthly" ? 100 : 1000} value={addCapital} onChange={(e) => setAddCapital(Number(e.target.value))} style={{ width: "100%" }} />
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            {["monthly", "annual"].map((freq) => (
+              <button
+                key={freq}
+                onClick={() => { setCapFreq(freq); setAddCapital(0); }}
+                style={{
+                  flex: 1, padding: "4px 0", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  border: "1px solid " + (capFreq === freq ? "#6366f1" : "#444"),
+                  borderRadius: 4,
+                  background: capFreq === freq ? "#6366f1" : "transparent",
+                  color: capFreq === freq ? "#fff" : "#888",
+                }}
+              >
+                {freq.charAt(0).toUpperCase() + freq.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Key Metrics */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 28 }}>
+        {[
+          { label: "Initial Borrow", value: formatCurrency(equity * leverageRatio), color: "#f59e0b" },
+          { label: "Leverage Ratio", value: `${(leverageRatio * 100).toFixed(1)}% D/E`, color: "#f59e0b" },
+          { label: "No-Margin Growth", value: formatPct(noMarginGrowth * 100), color: "#60a5fa" },
+          { label: "With-Margin Growth", value: formatPct(withMarginGrowth * 100), color: "#34d399" },
+          { label: "Annual Contributions", value: formatCurrency(annualContribution), color: "#818cf8" },
+          { label: `Extra Equity (Yr ${years})`, value: formatCurrency(finalData.equityDelta), color: "#a78bfa" },
+          { label: `Extra Income (Yr ${years})`, value: formatCurrency(finalData.incomeDelta) + "/yr", color: "#a78bfa" },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ background: "#1a1a2e", borderRadius: 8, padding: "12px 14px", borderLeft: `3px solid ${color}` }}>
+            <div style={{ fontSize: 11, color: "#888" }}>{label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Equity Growth Chart */}
+      <div style={{ background: "#1a1a2e", borderRadius: 10, padding: 16, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 12, color: "#fff" }}>Equity Growth Over Time</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <XAxis dataKey="year" stroke="#888" label={{ value: "Year", position: "insideBottom", offset: -4, fill: "#888" }} />
+            <YAxis stroke="#888" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
+            <Tooltip content={customTooltip} />
+            <Legend />
+            <Line type="monotone" dataKey="noMarginEquity" name="No Margin" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 4 }} />
+            <Line type="monotone" dataKey="withMarginEquity" name="With Margin" stroke="#34d399" strokeWidth={2.5} dot={{ r: 4 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Annual Income Chart */}
+      <div style={{ background: "#1a1a2e", borderRadius: 10, padding: 16, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 12, color: "#fff" }}>Annual Net Income Comparison</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={data.filter(d => d.year > 0)}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <XAxis dataKey="year" stroke="#888" label={{ value: "Year", position: "insideBottom", offset: -4, fill: "#888" }} />
+            <YAxis stroke="#888" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
+            <Tooltip content={customTooltip} />
+            <Legend />
+            <Bar dataKey="noMarginAnnualIncome" name="No Margin Income" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="withMarginNetIncome" name="Margin Net Income" fill="#34d399" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Year-by-year table */}
+      <div style={{ background: "#1a1a2e", borderRadius: 10, padding: 16, overflowX: "auto" }}>
+        <h3 style={{ fontSize: 15, marginBottom: 12, color: "#fff" }}>Year-by-Year Breakdown</h3>
+        <table>
+          <thead>
+            <tr>
+              {["Year", "No-Margin Equity", "Margin Equity", "Margin Debt", "Total Invested", "NM Income/yr", "Margin Income/yr", "Income Delta"].map(h => (
+                <th key={h}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row) => (
+              <tr key={row.year}>
+                <td style={{ color: "#fff", fontWeight: 600 }}>{row.year}</td>
+                <td style={{ color: "#60a5fa" }}>{formatCurrency(row.noMarginEquity)}</td>
+                <td style={{ color: "#34d399" }}>{formatCurrency(row.withMarginEquity)}</td>
+                <td style={{ color: "#f59e0b" }}>{formatCurrency(row.withMarginDebt)}</td>
+                <td style={{ color: "#e0e0e0" }}>{formatCurrency(row.withMarginTotal)}</td>
+                <td style={{ color: "#60a5fa" }}>{formatCurrency(row.noMarginAnnualIncome)}</td>
+                <td style={{ color: "#34d399" }}>{formatCurrency(row.withMarginNetIncome)}</td>
+                <td style={{ color: "#a78bfa", fontWeight: 600 }}>+{formatCurrency(row.incomeDelta)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop: 20, padding: 14, background: "#1a1a2e", borderRadius: 10, borderLeft: "3px solid #f59e0b" }}>
+        <p style={{ fontSize: 12, color: "#888" }}>
+          <strong style={{ color: "#f59e0b" }}>Assumptions:</strong> Flat portfolio price (no capital gains/losses), dividends reinvested at same yield, 
+          additional capital contributions added at end of each year, margin rate and yield constant, leverage ratio maintained by increasing borrowing as equity grows. 
+          No taxes modeled. Real-world results will vary — BDC/CEF distributions may fluctuate and margin requirements can change.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById("root"));
+</script>
+</body>
+</html>
