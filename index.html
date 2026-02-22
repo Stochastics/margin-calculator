@@ -84,6 +84,11 @@
         <button class="freq-btn" id="btn-annual" onclick="setFreq('annual')">Annual</button>
       </div>
     </div>
+    <div class="control">
+      <label>Contribution Years</label>
+      <div class="value" id="v-contribYears"></div>
+      <input type="range" id="contribYears" min="1" max="20" step="1" value="3" />
+    </div>
   </div>
 
   <div class="metrics" id="metrics"></div>
@@ -113,7 +118,7 @@
 
   <div class="disclaimer">
     <strong>Assumptions:</strong> Flat portfolio price (no capital gains/losses), dividends reinvested after tax at same yield,
-    additional capital contributions added at end of each year, margin rate and yield constant, leverage ratio
+    additional capital contributions added at end of each year for the specified contribution period then stopping, margin rate and yield constant, leverage ratio
     maintained by increasing borrowing as equity grows. Tax rate applies to gross dividends; margin interest is not tax-deductible in this model.
     Real-world results will vary — BDC/CEF distributions may fluctuate, margin requirements can change, and actual tax treatment depends on income type (qualified vs ordinary).
   </div>
@@ -148,6 +153,7 @@ function compute() {
   const maint = +$('maintReq').value / 100;
   const addCap = +$('addCapital').value;
   const tax = +$('taxRate').value / 100;
+  const contribYears = +$('contribYears').value;
   const annualContrib = capFreq === 'monthly' ? addCap * 12 : addCap;
 
   const retain = (100 - dd) / 100;
@@ -178,16 +184,17 @@ function compute() {
       eqDelta: Math.round(wm - nm),
     });
     if (yr < years) {
-      nm = nm * (1 + afterTaxYield) + annualContrib;
-      wm = wm * (1 + wmGrowth) + annualContrib;
+      const contrib = yr < contribYears ? annualContrib : 0;
+      nm = nm * (1 + afterTaxYield) + contrib;
+      wm = wm * (1 + wmGrowth) + contrib;
     }
   }
 
-  return { data, levRatio, nmGrowth, wmGrowth, annualContrib, equity };
+  return { data, levRatio, nmGrowth, wmGrowth, annualContrib, contribYears, equity };
 }
 
 function renderMetrics(res) {
-  const { data, levRatio, nmGrowth, wmGrowth, annualContrib, equity } = res;
+  const { data, levRatio, nmGrowth, wmGrowth, annualContrib, contribYears, equity } = res;
   const fin = data[data.length - 1];
   const yrs = data.length - 1;
   const items = [
@@ -195,7 +202,7 @@ function renderMetrics(res) {
     { label: 'Leverage Ratio', value: (levRatio * 100).toFixed(1) + '% D/E', color: '#f59e0b' },
     { label: 'No-Margin Growth', value: fmtPct(nmGrowth * 100), color: '#60a5fa' },
     { label: 'With-Margin Growth', value: fmtPct(wmGrowth * 100), color: '#34d399' },
-    { label: 'Annual Contributions', value: fmt(annualContrib), color: '#818cf8' },
+    { label: 'Annual Contributions', value: fmt(annualContrib) + ' × ' + contribYears + 'yr', color: '#818cf8' },
     { label: 'Extra Equity (Yr ' + yrs + ')', value: fmt(fin.eqDelta), color: '#a78bfa' },
     { label: 'Extra Income (Yr ' + yrs + ')', value: fmt(fin.delta) + '/yr', color: '#a78bfa' },
   ];
@@ -279,6 +286,7 @@ function updateLabels() {
   $('v-maintReq').textContent = $('maintReq').value + '%';
   $('v-taxRate').textContent = $('taxRate').value + '%';
   $('v-addCapital').textContent = fmt(+$('addCapital').value);
+  $('v-contribYears').textContent = $('contribYears').value + ' yrs';
 }
 
 function update() {
